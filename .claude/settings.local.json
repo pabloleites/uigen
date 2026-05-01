@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm pack *)",
+      "Bash(npm view *)",
+      "Bash(node -e \"process.stdin.resume\\(\\); let d=''; process.stdin.on\\('data',c=>d+=c\\); process.stdin.on\\('end',\\(\\)=>{ const p=JSON.parse\\(d\\); const exports = Object.keys\\(p.exports || {}\\); console.log\\('version:', p.version\\); }\\);\")",
+      "Bash(npm install *)",
+      "Bash(node -e \"process.stdin.resume\\(\\); let d=''; process.stdin.on\\('data',c=>d+=c\\); process.stdin.on\\('end',\\(\\)=>{ const v=JSON.parse\\(d\\); console.log\\('latest 5:', v.slice\\(-5\\).join\\(', '\\)\\); }\\);\")"
+    ]
+  }
+}
