@@ -30,6 +30,13 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Record existing Claude branches
+        id: pre-claude
+        run: |
+          git fetch --all --quiet
+          BRANCHES=$(git ls-remote --heads origin 'refs/heads/claude/*' | awk '{print $2}' | sort | tr '\n' '|')
+          echo "branches=$BRANCHES" >> $GITHUB_OUTPUT
+
       - name: Run Claude Code
         id: claude
         uses: anthropics/claude-code-action@v1
@@ -38,8 +45,34 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           additional_permissions: |
             actions: read
-          claude_args: '--dangerously-skip-permissions --append-system-prompt "After completing your task, if you made any code changes, you MUST open a pull request by executing the command gh pr create --base master --title \"...\" --body \"...\" via the Bash tool. Do NOT post a link to create a PR — you must run the gh pr create command directly so the PR is actually opened."'
+          claude_args: '--dangerously-skip-permissions'
           show_full_output: 'true'
+
+      - name: Open PR for new Claude branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          git fetch --all --quiet
+          BEFORE="${{ steps.pre-claude.outputs.branches }}"
+          NEW_BRANCH=""
+          while IFS= read -r ref; do
+            branch="${ref#refs/heads/}"
+            if [[ "$BEFORE" != *"refs/heads/$branch|"* ]]; then
+              NEW_BRANCH="$branch"
+              break
+            fi
+          done < <(git ls-remote --heads origin 'refs/heads/claude/*' | awk '{print $2}' | sort)
+          if [ -n "$NEW_BRANCH" ]; then
+            echo "Creating PR for branch: $NEW_BRANCH"
+            gh pr create \
+              --base master \
+              --head "$NEW_BRANCH" \
+              --title "fix: changes from Claude for issue #${ISSUE_NUMBER}" \
+              --body "Resolves #${ISSUE_NUMBER}" || echo "PR already exists or failed"
+          else
+            echo "No new Claude branch detected, skipping PR creation"
+          fi
 
   claude-bug-fix:
     if: |
