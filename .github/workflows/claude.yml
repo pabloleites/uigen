@@ -58,7 +58,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies
@@ -81,6 +81,19 @@ jobs:
           timeout 60 bash -c 'until curl -sf http://localhost:3000 > /dev/null 2>&1; do sleep 2; done'
           echo "Server is ready"
 
+      - name: Write Playwright MCP config
+        run: |
+          cat > /tmp/mcp-playwright.json << 'EOF'
+          {
+            "mcpServers": {
+              "playwright": {
+                "command": "npx",
+                "args": ["@playwright/mcp@latest", "--headless"]
+              }
+            }
+          }
+          EOF
+
       - name: Run Claude Code with Playwright MCP
         id: claude
         uses: anthropics/claude-code-action@v1
@@ -88,15 +101,7 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           additional_permissions: |
             actions: read
-          mcp_config: |
-            {
-              "mcpServers": {
-                "playwright": {
-                  "command": "npx",
-                  "args": ["@playwright/mcp@latest", "--headless"]
-                }
-              }
-            }
+          claude_args: '--mcp-config /tmp/mcp-playwright.json'
           prompt: |
             You are helping fix a bug reported in GitHub issue #${{ github.event.issue.number }}.
 
