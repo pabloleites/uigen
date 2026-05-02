@@ -99,9 +99,11 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           additional_permissions: |
             actions: read
-          claude_args: '--mcp-config /tmp/mcp-playwright.json'
+          claude_args: '--mcp-config /tmp/mcp-playwright.json --dangerously-skip-permissions'
+          show_full_output: 'true'
           prompt: |
             You are helping fix a bug reported in GitHub issue #${{ github.event.issue.number }}.
 
