@@ -13,17 +13,17 @@ on:
 jobs:
   claude:
     if: |
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude') && !contains(github.event.issue.labels.*.name, 'bug')) ||
       (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
       (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
-      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+      (github.event_name == 'issues' && !contains(github.event.issue.labels.*.name, 'bug') && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
     runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: read
       issues: read
       id-token: write
-      actions: read # Required for Claude to read CI results on PRs
+      actions: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -35,16 +35,91 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-
-          # This is an optional setting that allows Claude to read CI results on PRs
           additional_permissions: |
             actions: read
 
-          # Optional: Give a custom prompt to Claude. If this is not specified, Claude will perform the instructions specified in the comment that tagged it.
-          # prompt: 'Update the pull request description to include a summary of changes.'
+  claude-bug-fix:
+    if: |
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude') && contains(github.event.issue.labels.*.name, 'bug')) ||
+      (github.event_name == 'issues' && contains(github.event.issue.labels.*.name, 'bug') && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
-          # Optional: Add claude_args to customize behavior and configuration
-          # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
-          # or https://code.claude.com/docs/en/cli-reference for available options
-          # claude_args: '--allowed-tools Bash(gh pr *)'
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
 
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup database
+        run: |
+          npx prisma generate
+          npx prisma migrate deploy
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Start development server
+        run: npm run dev &
+
+      - name: Wait for server to be ready
+        run: |
+          echo "Waiting for dev server on port 3000..."
+          timeout 60 bash -c 'until curl -sf http://localhost:3000 > /dev/null 2>&1; do sleep 2; done'
+          echo "Server is ready"
+
+      - name: Run Claude Code with Playwright MCP
+        id: claude
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          additional_permissions: |
+            actions: read
+          mcp_config: |
+            {
+              "mcpServers": {
+                "playwright": {
+                  "command": "npx",
+                  "args": ["@playwright/mcp@latest", "--headless"]
+                }
+              }
+            }
+          prompt: |
+            You are helping fix a bug reported in GitHub issue #${{ github.event.issue.number }}.
+
+            **Issue title:** ${{ github.event.issue.title }}
+
+            **Issue description:**
+            ${{ github.event.issue.body }}
+
+            The development server is running at http://localhost:3000. Follow these steps:
+
+            ## Step 1: Reproduce the bug
+            Use the Playwright MCP tools to navigate to http://localhost:3000 and attempt to reproduce the issue exactly as described. Document what you observe.
+
+            ## Step 2a: If the bug IS reproduced
+            1. Analyze the codebase to identify the root cause
+            2. Implement a fix
+            3. Run `npm test` to verify existing tests still pass
+            4. Use Playwright to confirm the fix resolves the issue
+            5. Create a branch named `fix/issue-${{ github.event.issue.number }}`
+            6. Commit your changes with a descriptive message
+            7. Open a pull request that closes issue #${{ github.event.issue.number }}
+
+            ## Step 2b: If the bug CANNOT be reproduced
+            Post a comment on the issue describing exactly what you tried, what you observed, and request any additional details needed to reproduce it.
+
+            Only open a pull request after the fix is confirmed to work and all tests pass.
