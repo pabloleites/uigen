@@ -117,6 +117,13 @@ jobs:
           timeout 60 bash -c 'until curl -sf http://localhost:3000 > /dev/null 2>&1; do sleep 2; done'
           echo "Server is ready"
 
+      - name: Record existing fix branches
+        id: pre-claude
+        run: |
+          git fetch --all --quiet
+          BRANCHES=$(git ls-remote --heads origin 'refs/heads/fix/*' | awk '{print $2}' | sort | tr '\n' '|')
+          echo "branches=$BRANCHES" >> $GITHUB_OUTPUT
+
       - name: Write Playwright MCP config
         run: |
           cat > /tmp/mcp-playwright.json << 'EOF'
@@ -158,11 +165,33 @@ jobs:
             2. Implement a fix
             3. Run `npm test` to verify existing tests still pass
             4. Use Playwright to confirm the fix resolves the issue
-            5. Create a branch named `fix/issue-${{ github.event.issue.number }}`
-            6. Commit your changes with a descriptive message
-            7. Open a pull request that closes issue #${{ github.event.issue.number }}
+            5. Commit your changes with a descriptive message
 
             ## Step 2b: If the bug CANNOT be reproduced
             Post a comment on the issue describing exactly what you tried, what you observed, and request any additional details needed to reproduce it.
 
-            Only open a pull request after the fix is confirmed to work and all tests pass.
+      - name: Open PR for new fix branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          git fetch --all --quiet
+          BEFORE="${{ steps.pre-claude.outputs.branches }}"
+          NEW_BRANCH=""
+          while IFS= read -r ref; do
+            branch="${ref#refs/heads/}"
+            if [[ "$BEFORE" != *"refs/heads/$branch|"* ]]; then
+              NEW_BRANCH="$branch"
+              break
+            fi
+          done < <(git ls-remote --heads origin 'refs/heads/fix/*' | awk '{print $2}' | sort)
+          if [ -n "$NEW_BRANCH" ]; then
+            echo "Creating PR for branch: $NEW_BRANCH"
+            gh pr create \
+              --base master \
+              --head "$NEW_BRANCH" \
+              --title "fix: bug from issue #${ISSUE_NUMBER}" \
+              --body "Resolves #${ISSUE_NUMBER}" || echo "PR already exists or failed"
+          else
+            echo "No new fix branch detected, skipping PR creation"
+          fi
