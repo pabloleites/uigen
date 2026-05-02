@@ -38,7 +38,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           additional_permissions: |
             actions: read
-          claude_args: '--dangerously-skip-permissions'
+          claude_args: '--dangerously-skip-permissions --append-system-prompt "After completing your task, if you made any code changes, always open a pull request using gh pr create --base master with a clear title and description."'
           show_full_output: 'true'
 
   claude-bug-fix:
