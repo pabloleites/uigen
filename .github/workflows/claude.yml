@@ -38,7 +38,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           additional_permissions: |
             actions: read
-          claude_args: '--dangerously-skip-permissions --append-system-prompt "After completing your task, if you made any code changes, always open a pull request using gh pr create --base master with a clear title and description."'
+          claude_args: '--dangerously-skip-permissions --append-system-prompt "After completing your task, if you made any code changes, you MUST open a pull request by executing the command gh pr create --base master --title \"...\" --body \"...\" via the Bash tool. Do NOT post a link to create a PR — you must run the gh pr create command directly so the PR is actually opened."'
           show_full_output: 'true'
 
   claude-bug-fix:
